@@ -1,6 +1,4 @@
-use core::num;
 
-use crate::rlox;
 
 #[derive(Clone, Debug)]
 pub enum RloxToken {
@@ -44,6 +42,7 @@ impl std::fmt::Debug for Token {
     }
 }
 
+
 pub struct RloxScanner {
     pub source: String,
     pub tokens: Vec<Token>,
@@ -54,7 +53,8 @@ pub struct RloxScanner {
 }
 
 impl RloxScanner {
-    pub fn new(source: String) -> Self {
+    pub fn new(source: String) -> Self 
+    {
         RloxScanner {
             source,
             tokens: Vec::new(),
@@ -65,21 +65,22 @@ impl RloxScanner {
         }
     }
 
-    fn scan_tokens(&mut self, raise_error: fn(usize, usize, &str)) {
-        while !self.isAtEnd() {
+    pub fn scan_tokens(&mut self, raise_error: fn(usize, usize, &str)) 
+    {
+        while !self.is_at_end() {
             let token = self.scan_token();
-            match token {
+            let _ = match token {
                 RloxParseResult::Ignored => {},
                 RloxParseResult::FoundToken(token) => self.tokens.push(token),
                 RloxParseResult::Error(e) => {
                     // Handle error, e.g., log it or raise an error
                     raise_error(self.line, self.col, &e);
                 }
-            } 
-        }
+            };
+        };
     }
 
-    fn isAtEnd(&self) -> bool {
+    fn is_at_end(&self) -> bool {
         self.current >= self.source.len()
     }
 
@@ -90,12 +91,12 @@ impl RloxScanner {
         c
     }
 
-    fn addToken(&mut self, token: Token) {
+    fn add_token(&mut self, token: Token) {
         self.tokens.push(token);
     }
 
     fn match_next(&mut self, expected: char) -> bool {
-        if self.isAtEnd() {
+        if self.is_at_end() {
             return false;
         }
         if self.source.chars().nth(self.current).unwrap() != expected {
@@ -107,20 +108,20 @@ impl RloxScanner {
     }
 
     fn peek(&self) -> char {
-        if self.isAtEnd() {
+        if self.is_at_end() {
             return '\0';
         }
         self.source.chars().nth(self.current).unwrap()
     }
 
-    fn process_string_literal(&mut self) -> Result<Token, String> {
+    fn process_string_literal(&mut self) -> RloxParseResult {
         let mut string_value = String::new();
-        while !self.isAtEnd() && self.peek() != '"' {
+        while !self.is_at_end() && self.peek() != '"' {
             string_value.push(self.advance());
         }
-        if self.isAtEnd() {
+        if self.is_at_end() {
             // Handle unterminated string error
-            return Err("Unterminated string literal".to_string());
+            return RloxParseResult::Error("Unterminated string literal".to_string());
         }
         // Consume the closing "
         self.advance();
@@ -130,11 +131,46 @@ impl RloxScanner {
             line: self.line,
             col: self.col,
         };
-        self.addToken(found_token.clone());
-        Ok(found_token)
+        self.add_token(found_token.clone());
+        RloxParseResult::FoundToken(found_token)
     }
 
-    pub fn scan_token(&mut self) {
+    fn process_identifier(&mut self) -> RloxParseResult {
+        while !self.is_at_end() && self.peek().is_alphanumeric() {
+            self.advance();
+        }
+
+        let text = &self.source[self.start..self.current];
+        match text {
+            "and" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::And, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "class" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Class, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "else" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Else, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "false" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::False, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "for" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::For, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "fun" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Fun, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "if" => return RloxParseResult::FoundToken(Token { rlox_token:  RloxToken::If, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "nil" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Nil, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "or" => return RloxParseResult::FoundToken(Token { rlox_token:  RloxToken::Or, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "print" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Print, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "return" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Return, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "super" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Super, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "this" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::This, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "true" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::True, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "var" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Var, lexeme: text.to_string(), line: self.line, col: self.col }),
+            "while" => return RloxParseResult::FoundToken(Token { rlox_token: RloxToken::While, lexeme: text.to_string(), line: self.line, col: self.col }),
+            _ => return RloxParseResult::FoundToken(Token {
+                rlox_token: RloxToken::Identifier(text.to_string()),
+                lexeme: text.to_string(),
+                line: self.line,
+                col: self.col,
+            })
+        }
+
+
+        
+    }
+
+    pub fn scan_token(&mut self) -> RloxParseResult {
         let c = self.advance();
         let found_token = match c {
             '(' => RloxParseResult::FoundToken(Token { rlox_token: RloxToken::LeftParen, lexeme: "(".to_string(), line: self.line, col: self.col }),
@@ -146,7 +182,6 @@ impl RloxScanner {
             '-' => RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Minus, lexeme: "-".to_string(), line: self.line, col: self.col }),
             '+' => RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Plus, lexeme: "+".to_string(), line: self.line, col: self.col }),
             ';' => RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Semicolon, lexeme: ";".to_string(), line: self.line, col: self.col }),
-            '/' => RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Slash, lexeme: "/".to_string(), line: self.line, col: self.col }),
             '*' => RloxParseResult::FoundToken(Token { rlox_token: RloxToken::Star, lexeme: "*".to_string(), line: self.line, col: self.col }),
             '!' => {
                 if self.match_next('=') {
@@ -179,7 +214,7 @@ impl RloxScanner {
             '/' => {
                 if self.match_next('/') {
                     // This is a comment, skip until the end of the line
-                    while self.peek() != '\n' && !self.isAtEnd() {
+                    while self.peek() != '\n' && !self.is_at_end() {
                         self.advance();
                     }
                     RloxParseResult::Ignored
@@ -201,12 +236,12 @@ impl RloxScanner {
 
                if  c.is_digit(10) {
                     let mut number = c.to_string();
-                    while !self.isAtEnd() && self.peek().is_digit(10) {
+                    while !self.is_at_end() && self.peek().is_digit(10) {
                         number.push(self.advance());
                     }
-                    if !self.isAtEnd() && self.peek() == '.' {
+                    if !self.is_at_end() && self.peek() == '.' {
                         number.push(self.advance());
-                        while !self.isAtEnd() && self.peek().is_digit(10) {
+                        while !self.is_at_end() && self.peek().is_digit(10) {
                             number.push(self.advance());
                         }
                     }
@@ -221,16 +256,21 @@ impl RloxScanner {
                             })
                         }
                         Err(_) => {
-                            RloxParseResult::Err("Invalid number format".to_string());
+                            RloxParseResult::Error("Invalid number format".to_string())
                         }
                     }
-                } else {
-                    RloxParseResult::Err(format!("Unexpected character: {}", c));    
+                } else if c.is_alphanumeric() {
+                    self.process_identifier()
+                }
+                else {
+                    RloxParseResult::Error(format!("Unexpected character: {}", c))    
                 }   
             }               
         };
 
         return found_token;
         }
+        
+     
     }
-}
+

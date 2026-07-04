@@ -8,11 +8,11 @@ fn run_file(path: &str) {
     println!("Source code:\n{}", source);
 }
 
-fn get_tokens(source: &str) -> Vec<FoundToken> {
+fn get_tokens(source: &str) -> Vec<rlox::Token> {
     // Placeholder implementation for tokenization
     // In a real interpreter, this would involve lexical analysis
     let mut scanner = rlox::RloxScanner::new(source.to_string());
-    scanner.scan_tokens();
+    scanner.scan_tokens(raise_error);
     scanner.tokens
 }
 
