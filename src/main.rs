@@ -18,11 +18,11 @@ fn get_tokens(source: &str) -> Vec<rlox::Token> {
 
 fn run(source: &str) -> Result<bool, &str> {
     let tokens = get_tokens(source);
-    
-    // get tokens somehow
-    for token in tokens {
-        println!("{}", token);
-    }
+    let mut parser = rlox::Parser::new(tokens, raise_error);
+    let expr =  parser.parse();
+
+    dbg!(expr);
+ 
 
     return Ok(true);
 }

@@ -1,3 +1,5 @@
+use std::vec;
+
 
 
 #[derive(Clone, Debug, PartialEq)]
@@ -306,11 +308,11 @@ pub enum RloxUnaryOperator {
 pub enum RloxExpression {
     Binary {
         left: Box<RloxExpression>,
-        operator: RloxBinaryOperator,
+        operator: Token,
         right: Box<RloxExpression>,
     },
     Unary {
-        operator: RloxUnaryOperator,
+        operator: Token,
         right: Box<RloxExpression>,
     },
     Primary(RloxPrimaryExpression),
@@ -323,16 +325,42 @@ pub enum RloxPrimaryExpression {
     String(String),
     Bool(bool),
     Nil,
-    RloxExpression(Box<RloxExpression>),
+    Grouping(Box<RloxExpression>),
+}
+
+#[derive(Debug, Clone)]
+pub struct RloxParseError {
+    pub message: String,
+    pub token: Token
 }
 
 impl Parser {
 
-    pub fn new(tokens: Vec<Token>) -> Self {
+    pub fn new(tokens: Vec<Token>, error_func:fn(usize, usize, &str) ) -> Self {
         Parser {
             tokens,
             current: 0,
         }
+    }
+
+    pub fn parse(&mut self) -> Result<RloxExpression, RloxParseError> {
+        return self.parse_expression();
+    }
+
+    fn synchronize(&mut self)
+    {
+        self.advance();
+
+        while !self.is_at_end() {
+            if self.previous().rlox_token == RloxToken::Semicolon {return}
+
+            match self.peek().rlox_token {
+            RloxToken::Class | RloxToken::Fun | RloxToken::Var | RloxToken::For
+            | RloxToken::If | RloxToken::While | RloxToken::Print | RloxToken::Return => {return;}
+            _ => { self.advance(); }
+            }
+        }
+       
     }
 
     fn previous(&mut self) -> Token {
@@ -374,33 +402,101 @@ impl Parser {
         return false;
     }
 
-    pub fn parse_comparison(&mut self) -> Result<RloxExpression, String> {
-        let mut expr = term();
+    fn consume(&mut self, token_type: RloxToken, err_msg: String) -> Result<Token, RloxParseError>
+    {
+        if self.check(token_type) {
+            return Ok(self.advance())
+        }
+
+        return Err(RloxParseError { message: err_msg, token: self.peek() })
+    }
+
+    fn parse_primary(&mut self) -> Result<RloxExpression, RloxParseError>
+    {
+        if self.match_tokens(vec![RloxToken::False])
+        {
+            return Ok(RloxExpression::Primary(RloxPrimaryExpression::Bool(false)))
+        }
+        if self.match_tokens(vec![RloxToken::True])
+        {
+            return Ok(RloxExpression::Primary(RloxPrimaryExpression::Bool(true)))
+        }
+        if self.match_tokens(vec![RloxToken::Nil])
+        {
+            return Ok(RloxExpression::Primary(RloxPrimaryExpression::Nil))
+        }
+
+        if self.match_tokens(vec![RloxToken::LeftParen]) 
+        {
+            let expr = self.parse_expression()?;
+            self.consume(RloxToken::RightParen, "Expect ')' after expression.".to_string());
+            return Ok(RloxExpression::Primary(RloxPrimaryExpression::Grouping(Box::new(expr))))
+        }
+        return Err(RloxParseError { message: "Unexpected parse error. Expect expression".to_string(), token: self.peek() });
+    }
+
+    fn parse_unary(&mut self) -> Result<RloxExpression, RloxParseError>
+    {
+        if self.match_tokens(vec![RloxToken::Bang, RloxToken::Minus]) {
+            let operator = self.previous();
+            let right = self.parse_unary()?;
+            return Ok(RloxExpression::Unary { operator, right: Box::new(right) })
+        }
+
+        return self.parse_primary();
+    }
+
+    fn parse_factor(&mut self) -> Result<RloxExpression, RloxParseError>
+    {
+        let mut expr  = self.parse_unary()?;
+
+        while self.match_tokens(vec![RloxToken::Slash, RloxToken::Star]) {
+            let operator = self.previous();
+            let right = self.parse_unary()?;
+            expr = RloxExpression::Binary { left: Box::new(expr), operator, right: Box::new(right) }
+        }
+        return Ok(expr);
+    }
+
+    fn parse_term(&mut self) -> Result<RloxExpression, RloxParseError> {
+        let mut expr = self.parse_factor()?;
+
+        while self.match_tokens(vec!(RloxToken::Minus, RloxToken::Plus)) {
+            let operator = self.previous();
+            let right = self.parse_factor()?;
+            expr = RloxExpression::Binary { left: Box::new(expr), operator, right: Box::new(right) }
+        }
+
+        return Ok(expr);
+    }
+
+    fn parse_comparison(&mut self) -> Result<RloxExpression, RloxParseError> {
+        let mut expr = self.parse_term()?;
 
         while self.match_tokens(vec!(RloxToken::Greater, RloxToken::GreaterEqual, RloxToken::Less, RloxToken::LessEqual))
         {
             let operator = self.previous();
-            let right = term();
-            expr = RloxExpression::Binary { left: expr, operator, right}
+            let right = self.parse_term()?;
+            expr = RloxExpression::Binary { left: Box::new(expr), operator, right: Box::new(right)}
         }
 
-        return expr;
+        return Ok(expr);
     }
 
-    pub fn parse_equality(&mut self) -> Result<RloxExpression, String> {
-        let mut expr = parse_comparison();
+    fn parse_equality(&mut self) -> Result<RloxExpression, RloxParseError> {
+        let mut expr = self.parse_comparison()?;
 
         while(self.match_tokens(vec!(RloxToken::BangEqual, RloxToken::EqualEqual)))
         {
             let operator = self.previous();
-            let right = self.parse_comparison();
+            let right = self.parse_comparison()?;
             expr = RloxExpression::Binary { left: Box::new(expr), operator, right: Box::new(right) };
         }
 
-        return expr;
+        return Ok(expr);
     }
 
-    pub fn parse_expression(&mut self) -> Result<RloxExpression, String> {
+    fn parse_expression(&mut self) -> Result<RloxExpression, RloxParseError> {
         // Implement the parsing logic here
         self.parse_equality()
     }
