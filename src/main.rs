@@ -1,4 +1,5 @@
 use std::{env::args, fs, io::Write};
+use rlox::Evaluateable;
 pub mod rlox;
 
 
@@ -21,8 +22,25 @@ fn run(source: &str) -> Result<bool, &str> {
     let mut parser = rlox::Parser::new(tokens, raise_error);
     let expr =  parser.parse();
 
-    dbg!(expr);
+    //dbg!(expr);
+
+    match expr {
+        Ok(parsed) => {
+            match parsed.evaluate() {
+                Ok(val) => {
+                    print!("{:?}", val)
+                }
+                Err(eval_err) => {
+                    print!("Eval Error {:?} at line {}:{}", eval_err, eval_err.token.line, eval_err.token.col)
+                }
+            }
+        }
+        Err(err) => {
+            print!("Parse Error {:?} at line {}:{}", err, err.token.line, err.token.col)
+        }
+    }
  
+    //print!("{}",expr.eval());
 
     return Ok(true);
 }

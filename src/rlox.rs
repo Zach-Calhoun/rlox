@@ -1,4 +1,4 @@
-use std::vec;
+use std::{fmt::format, vec};
 
 use crate::rlox::{RloxExpression::Primary, RloxPrimaryExpression::{Grouping, Number}};
 
@@ -330,11 +330,31 @@ pub enum RloxPrimaryExpression {
     Grouping(Box<RloxExpression>),
 }
 
+#[derive(Debug, Clone)]
+pub struct RloxEvalError {
+    pub token: Token,
+    pub message: String
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum RloxValue {
     Number(f64),
     String(String),
     Bool(bool),
     Nil
+}
+
+
+impl RloxValue {
+    pub fn is_truthy(&self) -> bool 
+    {
+        match self {
+            RloxValue::Number(n) => *n == 0.0f64,
+            RloxValue::String(s) => !s.is_empty(),
+            RloxValue::Bool(b) => *b,
+            RloxValue::Nil => false
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -343,31 +363,144 @@ pub struct RloxParseError {
     pub token: Token
 }
 
-trait Evaluateable
+pub trait Evaluateable
 {
-    fn evaluate(&self) -> RloxValue;
+    fn evaluate(&self) -> Result<RloxValue,RloxEvalError>;
 }
 
 impl Evaluateable for RloxPrimaryExpression {
-    fn evaluate(&self) -> RloxValue {
+    fn evaluate(&self) -> Result<RloxValue,RloxEvalError> {
         match self {
-            Number(n) => RloxValue::Number(*n),
-            RloxPrimaryExpression::String(s) => RloxValue::String(s.clone()),
-            RloxPrimaryExpression::Bool(b) => RloxValue::Bool(*b),
-            RloxPrimaryExpression::Nil => RloxValue::Nil,
+            Number(n) => Ok(RloxValue::Number(*n)),
+            RloxPrimaryExpression::String(s) => Ok(RloxValue::String(s.clone())),
+            RloxPrimaryExpression::Bool(b) => Ok(RloxValue::Bool(*b)),
+            RloxPrimaryExpression::Nil => Ok(RloxValue::Nil),
             Grouping(expr) => expr.evaluate()
         }
     }
 }
 
 impl Evaluateable for RloxExpression {
-    fn evaluate(&self) -> RloxValue
+    fn evaluate(&self) -> Result<RloxValue,RloxEvalError>
     {
         match self {
             Primary(prim) => {
                 prim.evaluate()
             },
-            _ => panic!("NOT DONE")
+            RloxExpression::Binary { left, operator, right } => {
+                let left_val = match left.evaluate() {
+                    Ok(l) => l,
+                    Err(e) => return Err(RloxEvalError { token: operator.clone(), message: format!("Expected expresion as left operand of {:?} found {:?}", operator, e) })
+                };
+
+                // alternative more concise approach can be:
+                let right_val = right.evaluate().map_err(|e| RloxEvalError {
+                    token: operator.clone(),
+                    message: format! ("Expected expression as right operand of {:?} found {:?}", operator, e)
+                })?;
+                
+                match operator.rlox_token {
+                    RloxToken::And => {
+                        return Ok(RloxValue::Bool(left_val.is_truthy() && right_val.is_truthy()));
+                    }
+                    RloxToken::Greater => {
+                        match (&left_val, &right_val) {
+                            (RloxValue::Number(l), RloxValue::Number(r)) => Ok(RloxValue::Bool(l > r)),
+                            _ => Err(RloxEvalError {
+                                token: operator.clone(),
+                                message: format! ("Can only compare numbers, not {:?} and {:?}", left_val, right_val)
+                            })
+                        }
+                    }
+                    RloxToken::GreaterEqual => {
+                        match (&left_val, &right_val) {
+                            (RloxValue::Number(l), RloxValue::Number(r)) => Ok(RloxValue::Bool(l >= r)),
+                            _ => Err(RloxEvalError {
+                                token: operator.clone(),
+                                message: format! ("Can only compare numbers, not {:?} and {:?}", left_val, right_val)
+                            })
+                        }
+                    }
+                    RloxToken::Or => {
+                        return Ok(RloxValue::Bool(left_val.is_truthy() || right_val.is_truthy()));
+                    }
+                    RloxToken::Equal => {
+                        Err(RloxEvalError { token: operator.clone(), message: format!("Binary operator {:?} not implemented", operator.rlox_token) })
+                    }
+                    RloxToken::EqualEqual => {
+                        return Ok(RloxValue::Bool(left_val == right_val));
+                    }
+                    RloxToken::BangEqual => {
+                        return Ok(RloxValue::Bool(left_val != right_val));
+                    }
+                    RloxToken::Less => {
+                        match (&left_val, &right_val) {
+                            (RloxValue::Number(l), RloxValue::Number(r)) => Ok(RloxValue::Bool(l < r)),
+                            _ => Err(RloxEvalError {
+                                token: operator.clone(),
+                                message: format! ("Can only compare numbers, not {:?} and {:?}", left_val, right_val)
+                            })
+                        }
+                    }
+                    RloxToken::LessEqual => {
+                        match (&left_val, &right_val) {
+                            (RloxValue::Number(l), RloxValue::Number(r)) => Ok(RloxValue::Bool(l <= r)),
+                            _ => Err(RloxEvalError {
+                                token: operator.clone(),
+                                message: format! ("Can only compare numbers, not {:?} and {:?}", left_val, right_val)
+                            })
+                        }
+                    }
+                    RloxToken::Plus => {
+                        match (&left_val, &right_val) {
+                            (RloxValue::Number(l), RloxValue::Number(r)) => Ok(RloxValue::Number(l + r)),
+                            _ => Err(RloxEvalError {
+                                token: operator.clone(),
+                                message: format! ("Operator + not defined for {:?} and {:?}", left_val, right_val)
+                            })
+                        }
+                    }
+                    RloxToken::Minus => {
+                        match (&left_val, &right_val) {
+                            (RloxValue::Number(l), RloxValue::Number(r)) => Ok(RloxValue::Number(l / r)),
+                            _ => Err(RloxEvalError {
+                                token: operator.clone(),
+                                message: format! ("Operator - not defined for {:?} and {:?}", left_val, right_val)
+                            })
+                        }
+                    }
+                    RloxToken::Star => {
+                        match (&left_val, &right_val) {
+                            (RloxValue::Number(l), RloxValue::Number(r)) => Ok(RloxValue::Number(l * r)),
+                            _ => Err(RloxEvalError {
+                                token: operator.clone(),
+                                message: format! ("Operator * not defined for {:?} and {:?}", left_val, right_val)
+                            })
+                        }
+                    }
+                    RloxToken::Slash => {
+                        match (&left_val, &right_val) {
+                            (RloxValue::Number(l), RloxValue::Number(r)) => Ok(RloxValue::Number(l / r)),
+                            _ => Err(RloxEvalError {
+                                token: operator.clone(),
+                                message: format! ("Operator / not defined for {:?} and {:?}", left_val, right_val)
+                            })
+                        }
+                    }
+                    _ => Err(RloxEvalError { token: operator.clone(), message: format!("Unexpected binary operator {:?}", operator.rlox_token) })
+                }
+            },
+            RloxExpression::Unary { operator, right } => {
+                match operator.rlox_token {
+                    RloxToken::Bang => {
+                        Err(RloxEvalError { token: operator.clone(), message: format!("Unary operator {:?} not implemented", operator.rlox_token) })
+                    },
+                    RloxToken::Minus => {
+                        Err(RloxEvalError { token: operator.clone(), message: format!("Unary operator {:?} not implemented", operator.rlox_token) })
+                    },
+                    _ => Err(RloxEvalError { token: operator.clone(), message: format!("Unexpected unary operator {:?}, expected ! or -", operator.rlox_token) })
+                }
+            }
         }
     }
 }
@@ -436,7 +569,7 @@ impl Parser {
 
     fn match_tokens(&mut self, token_types : Vec<RloxToken>) -> bool {
         for token_type in token_types {
-            if(self.check(token_type)) {
+            if self.check(token_type) {
                 self.advance();
                 return true;
             }
@@ -541,7 +674,7 @@ impl Parser {
     fn parse_equality(&mut self) -> Result<RloxExpression, RloxParseError> {
         let mut expr = self.parse_comparison()?;
 
-        while(self.match_tokens(vec!(RloxToken::BangEqual, RloxToken::EqualEqual)))
+        while self.match_tokens(vec!(RloxToken::BangEqual, RloxToken::EqualEqual))
         {
             let operator = self.previous();
             let right = self.parse_comparison()?;
