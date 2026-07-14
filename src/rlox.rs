@@ -1,5 +1,7 @@
 use std::vec;
 
+use crate::rlox::{RloxExpression::Primary, RloxPrimaryExpression::{Grouping, Number}};
+
 
 
 #[derive(Clone, Debug, PartialEq)]
@@ -328,10 +330,46 @@ pub enum RloxPrimaryExpression {
     Grouping(Box<RloxExpression>),
 }
 
+pub enum RloxValue {
+    Number(f64),
+    String(String),
+    Bool(bool),
+    Nil
+}
+
 #[derive(Debug, Clone)]
 pub struct RloxParseError {
     pub message: String,
     pub token: Token
+}
+
+trait Evaluateable
+{
+    fn evaluate(&self) -> RloxValue;
+}
+
+impl Evaluateable for RloxPrimaryExpression {
+    fn evaluate(&self) -> RloxValue {
+        match self {
+            Number(n) => RloxValue::Number(*n),
+            RloxPrimaryExpression::String(s) => RloxValue::String(s.clone()),
+            RloxPrimaryExpression::Bool(b) => RloxValue::Bool(*b),
+            RloxPrimaryExpression::Nil => RloxValue::Nil,
+            Grouping(expr) => expr.evaluate()
+        }
+    }
+}
+
+impl Evaluateable for RloxExpression {
+    fn evaluate(&self) -> RloxValue
+    {
+        match self {
+            Primary(prim) => {
+                prim.evaluate()
+            },
+            _ => panic!("NOT DONE")
+        }
+    }
 }
 
 impl Parser {
@@ -364,11 +402,11 @@ impl Parser {
     }
 
     fn previous(&mut self) -> Token {
-        return self.tokens.get(self.current-1).unwrap().clone();
+        return self.tokens.get(self.current-1).unwrap_or(&Token { rlox_token:RloxToken::Eof, lexeme: "".to_string(), line: 1, col: 1 }).clone();
     }
 
     fn peek(&mut self) -> Token {
-        return self.tokens.get(self.current).unwrap().clone();
+        return self.tokens.get(self.current).unwrap_or(&Token { rlox_token:RloxToken::Eof, lexeme: "".to_string(), line: 1, col: 1 }).clone()
     }
 
     fn is_at_end(&mut self) -> bool {
@@ -388,7 +426,12 @@ impl Parser {
         {
             return false;
         }
-        return self.peek().rlox_token == token_type;
+        let current_token = self.peek();
+        match (current_token.rlox_token, token_type) {
+            (RloxToken::Number(_), RloxToken::Number(_)) => true,
+            (RloxToken::String(_), RloxToken::String(_)) => true,
+            (token, to_match)=> token == to_match
+        }
     }
 
     fn match_tokens(&mut self, token_types : Vec<RloxToken>) -> bool {
@@ -413,6 +456,8 @@ impl Parser {
 
     fn parse_primary(&mut self) -> Result<RloxExpression, RloxParseError>
     {
+      
+
         if self.match_tokens(vec![RloxToken::False])
         {
             return Ok(RloxExpression::Primary(RloxPrimaryExpression::Bool(false)))
@@ -426,10 +471,20 @@ impl Parser {
             return Ok(RloxExpression::Primary(RloxPrimaryExpression::Nil))
         }
 
+        if self.match_tokens(vec![RloxToken::String("".to_string()),RloxToken::Number(0.0)])
+        {
+            let prev_token = self.previous();
+            return match prev_token.rlox_token {
+                RloxToken::String(s) => Ok(RloxExpression::Primary(RloxPrimaryExpression::String(s))),
+                RloxToken::Number(n) => Ok(RloxExpression::Primary(RloxPrimaryExpression::Number(n))),
+                _ => Err(RloxParseError { message: "Unexpected parse error. Expect number or string".to_string(), token: self.peek() })
+            }
+        }
+
         if self.match_tokens(vec![RloxToken::LeftParen]) 
         {
             let expr = self.parse_expression()?;
-            self.consume(RloxToken::RightParen, "Expect ')' after expression.".to_string());
+            self.consume(RloxToken::RightParen, "Expect ')' after expression.".to_string())?;
             return Ok(RloxExpression::Primary(RloxPrimaryExpression::Grouping(Box::new(expr))))
         }
         return Err(RloxParseError { message: "Unexpected parse error. Expect expression".to_string(), token: self.peek() });
