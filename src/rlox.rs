@@ -1,6 +1,6 @@
 use std::{fmt::format, vec};
 
-use crate::rlox::{RloxExpression::Primary, RloxPrimaryExpression::{Grouping, Number}};
+use crate::rlox::{RloxExpression::Primary, RloxPrimaryExpression::{Grouping, Number}, RloxStatement::PrintStatment};
 
 
 
@@ -514,8 +514,22 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<RloxExpression, RloxParseError> {
-        return self.parse_expression();
+    pub fn parse(&mut self) -> Result<Vec<RloxStatement>, RloxParseError> {
+        let mut statements: Vec<RloxStatement> = Vec::new();
+        while !self.is_at_end() {
+            let new_stmt = self.parse_statement();
+            match new_stmt {
+                Ok(stmt) => {
+                    statements.push(stmt);
+                }
+                Err(e) => {
+                    println!("{:?}",e);
+                    return Err(e);
+                }
+                
+            }
+        }
+        return Ok(statements);
     }
 
     fn synchronize(&mut self)
@@ -687,5 +701,47 @@ impl Parser {
     fn parse_expression(&mut self) -> Result<RloxExpression, RloxParseError> {
         // Implement the parsing logic here
         self.parse_equality()
+    }
+
+    fn parse_print_statement(&mut self) -> Result<RloxStatement, RloxParseError>
+    {
+        let value = self.parse_expression()?;
+        self.consume(RloxToken::Semicolon, "Expect ';' after value.".to_string());
+        return Ok(RloxStatement::PrintStatment(value))
+    }
+
+    fn parse_expression_statement(&mut self) -> Result<RloxStatement, RloxParseError>
+    {
+        let expr = self.parse_expression()?;
+        self.consume(RloxToken::Semicolon, "Expect ';' after expression.".to_string());
+        return Ok(RloxStatement::ExpressionStatement(expr))
+    }
+
+    fn parse_statement(&mut self) -> Result<RloxStatement, RloxParseError> {
+        if self.match_tokens(vec![RloxToken::Print]) {
+            return self.parse_print_statement()
+        }
+        return self.parse_expression_statement();
+    }
+}
+
+
+pub enum RloxStatement {
+    ExpressionStatement(RloxExpression),
+    PrintStatment(RloxExpression)
+}
+
+pub fn interpret(statemet: RloxStatement)
+{
+    match statemet {
+        RloxStatement::PrintStatment(val) => {
+            val.evaluate();
+        }
+        RloxStatement::ExpressionStatement(expr) => {
+            let val = expr.evaluate();
+            if let Ok(ok_val) = val {
+                println!("{:?}",ok_val);
+            }
+        }
     }
 }

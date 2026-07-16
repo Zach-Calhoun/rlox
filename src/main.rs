@@ -1,5 +1,7 @@
 use std::{env::args, fs, io::Write};
 use rlox::Evaluateable;
+
+use crate::rlox::interpret;
 pub mod rlox;
 
 
@@ -26,19 +28,14 @@ fn run(source: &str) -> Result<bool, &str> {
 
     match expr {
         Ok(parsed) => {
-            match parsed.evaluate() {
-                Ok(val) => {
-                    print!("{:?}", val)
-                }
-                Err(eval_err) => {
-                    print!("Eval Error {:?} at line {}:{}", eval_err, eval_err.token.line, eval_err.token.col)
+                for statement in parsed {
+                    interpret(statement);
                 }
             }
-        }
-        Err(err) => {
+             Err(err) => {
             print!("Parse Error {:?} at line {}:{}", err, err.token.line, err.token.col)
+            } 
         }
-    }
  
     //print!("{}",expr.eval());
 
